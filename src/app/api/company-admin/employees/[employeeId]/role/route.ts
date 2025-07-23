@@ -1,12 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import { PrismaClient } from "@/generated/prisma";
 import { auth } from "@/lib/auth";
 
 const prisma = new PrismaClient();
 
 export async function PATCH(
-  req: Request,
-  { params }: { params: { employeeId: string } }
+  request: NextRequest,
+  context: { params: Promise<{ employeeId: string }> }
 ) {
   try {
     const session = await auth();
@@ -26,19 +26,20 @@ export async function PATCH(
       return NextResponse.json({ error: "Unauthorized - No organization found" }, { status: 401 });
     }
 
-    const { role } = await req.json();
-    console.log("Updating role for employee:", { employeeId: params.employeeId, newRole: role });
+    const { employeeId } = await context.params;
+    const { role } = await request.json();
+    console.log("Updating role for employee:", { employeeId: employeeId, newRole: role });
 
     // Check if the employee exists and belongs to the organization
     const employee = await prisma.member.findFirst({
       where: {
-        id: params.employeeId,
+        id: employeeId,
         organizationId: userOrg.organizationId,
       },
     });
 
     if (!employee) {
-      console.log("Employee not found:", params.employeeId);
+      console.log("Employee not found:", employeeId);
       return NextResponse.json(
         { error: "Employee not found" },
         { status: 404 }

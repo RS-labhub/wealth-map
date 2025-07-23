@@ -1,12 +1,12 @@
-import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { NextResponse, NextRequest } from "next/server";
+import { PrismaClient } from "@/generated/prisma";
 import { auth } from "@/lib/auth";
 
 const prisma = new PrismaClient();
 
 export async function PATCH(
-  req: Request,
-  { params }: { params: { id: string } }
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth();
@@ -14,38 +14,33 @@ export async function PATCH(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Verify super admin status
-    const userOrg = await prisma.member.findFirst({
-      where: { userId: session.user.id },
-      include: { organization: true },
-    });
+    const { id } = await context.params;
+    const { status } = await request.json();
 
-    if (!userOrg?.organization.isSuperAdmin) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Get target organization
-    const organization = await prisma.organization.findUnique({
-      where: { id: params.id },
-    });
-
-    if (!organization) {
-      return NextResponse.json({ error: "Organization not found" }, { status: 404 });
-    }
-
-    // Toggle status
-    const updatedOrg = await prisma.organization.update({
-      where: { id: params.id },
-      data: {
-        status: organization.status === 'active' ? 'suspended' : 'active',
+    // Check if user is an admin of the organization
+    const member = await prisma.member.findFirst({
+      where: {
+        userId: session.user.id,
+        organizationId: id,
+        role: "admin",
       },
     });
 
-    return NextResponse.json(updatedOrg);
+    if (!member) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+    }
+
+    // Update organization status
+    const organization = await prisma.organization.update({
+      where: { id },
+      data: { status },
+    });
+
+    return NextResponse.json(organization);
   } catch (error) {
-    console.error('Status update error:', error);
+    console.error("Error updating organization status:", error);
     return NextResponse.json(
-      { error: "Failed to update status" },
+      { error: "Failed to update organization status" },
       { status: 500 }
     );
   }

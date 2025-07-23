@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+
 
 
 
@@ -9,8 +9,8 @@ export interface Owner {
   state: any;
   propertyName: any;
   address: any;
-  type: ReactNode;
-  netWorth: ReactNode;
+  type: string;
+  netWorth: string;
   wealthComposition: any;
   dataSources: any;
   id: string;
@@ -91,12 +91,12 @@ export type ConfidenceLevel = "High" | "Medium" | "Low"
 export interface Property {
 
 
-  lastUpdated: ReactNode;
+  lastUpdated: string;
   confidenceLevel?: ConfidenceLevel;
 ownerId?: string;
   coordinates?: [number, number];
   id: string;
-  name: string;
+  name?: string;
   description?: string;
   address: string;
   city: string;
@@ -104,14 +104,14 @@ ownerId?: string;
   country?: string;
   zipCode: string;
   price: number;
-  images: string[];
+  images?: string[];
   area: number;
   bed?: number; // only for houses
   bath?: number;
   type?: string;
   confidenceScore: number | null;
   trendingScore?: number;
-  updatedAt: Date; // or Date, depending on your usage
+  updatedAt?: Date; // or Date, depending on your usage
   // You can add these as arrays of related types if you have them defined:
   owners?: any[];
   Bookmarks?: any[];
@@ -190,14 +190,16 @@ export const capitalizeFirstLetter = (str: string): string => {
 // src/Models/models.ts or wherever you define your interfaces
 
 export interface Report {
-  id: string; // Unique identifier for the report
-  name: string; // Name of the report (e.g., "High Value Properties")
-  description: string; // Description of the report
-  created: string; // Date the report was created (formatted as a string, e.g., "May 15, 2025")
-  type: "bar" | "pie" | "line"; // Type of chart (e.g., "bar", "pie", "line")
-  properties: string[]; // Array of IDs of properties included in the report
-  fields: string[]; // Array of IDs of data fields included in the report (e.g., "Price", "confidenceLevel")
-  shared: boolean; // Indicates if the report has been shared
+  id: string;
+  title?: string;
+  name?: string;
+  description?: string;
+  created: string;
+  type: 'bar' | 'pie' | 'line';
+  properties: string[];
+  fields: string[];
+  shared: boolean;
+  notes?: string | { properties: string[]; fields: string[] };
 }
 export  interface User
 { id: string; name?: string | null | undefined;

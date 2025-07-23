@@ -107,29 +107,46 @@ export class PropertyAgent {
     // Search properties based on the query
     const properties = await prisma.property.findMany({
       where: {
-        OR: [
-          { name: { contains: query, mode: 'insensitive' } },
-          { address: { contains: query, mode: 'insensitive' } },
-          { city: { contains: query, mode: 'insensitive' } },
-          { state: { contains: query, mode: 'insensitive' } },
-        ],
+        AND: [
+          {
+            country: 'US',
+            state: { not: '' },
+            city: { not: '' },
+            zipCode: { not: '' }
+          },
+          {
+            OR: [
+              { name: { contains: query, mode: 'insensitive' } },
+              { address: { contains: query, mode: 'insensitive' } },
+              { city: { contains: query, mode: 'insensitive' } },
+              { state: { contains: query, mode: 'insensitive' } },
+              { zipCode: { contains: query, mode: 'insensitive' } }
+            ]
+          }
+        ]
       },
       include: {
         owners: {
           include: {
-            owner: true,
-          },
+            owner: true
+          }
         },
+        views: true
       },
+      orderBy: {
+        updatedAt: 'desc'
+      }
     });
 
     return properties.map(property => ({
       ...property,
+      price: Number(property.price),
+      address: `${property.address}, ${property.city}, ${property.state} ${property.zipCode}`,
       owners: property.owners.map(po => ({
         name: po.owner.name,
         email: po.owner.email,
-        phoneNumber: po.owner.phoneNumber,
-      })),
+        phoneNumber: po.owner.phoneNumber
+      }))
     }));
   }
 
@@ -176,7 +193,8 @@ export class PropertyAgent {
     userQuery: string
   ): Promise<string> {
     const prompt = `
-      You are a friendly and knowledgeable real estate assistant. Based on the following property data and web search results, please provide a helpful response to the user's query.
+      You are a knowledgeable US real estate assistant specializing in property analysis and market insights. 
+      Based on the following property data and web search results, provide a helpful response to the user's query.
       
       User Query: ${userQuery}
       
@@ -186,20 +204,29 @@ export class PropertyAgent {
       Additional Web Information:
       ${webData}
       
-      Please provide a response that:
-      1. Uses a conversational, friendly tone - like you're chatting with a friend
-      2. Directly answers the user's question in a natural way
-      3. Includes relevant property details in a casual, easy-to-understand format
-      4. Adds any interesting market insights from the web data
-      5. Keeps the response concise and engaging
-      6. Uses natural language and avoids formal business jargon
-      7. If citing sources, do it naturally within the conversation
+      Guidelines for your response:
+      1. Focus exclusively on US real estate market and properties
+      2. Use US-specific terminology and formats:
+         - Prices in USD
+         - Addresses in US format (City, State ZIP)
+         - Property sizes in square feet
+         - Market trends specific to US regions
+      3. Provide a friendly, conversational response that:
+         - Directly answers the user's question
+         - Includes relevant property details
+         - Adds market insights from the web data
+         - Uses natural, engaging language
+         - Cites sources naturally within the conversation
+      4. If no US properties are found, explain that and suggest:
+         - Refining the search to a specific US location
+         - Looking at similar properties in nearby areas
+         - Checking other US markets
       
       Remember to:
-      - Use contractions (I'm, you're, that's, etc.)
-      - Keep sentences short and clear
-      - Add personality to your response
-      - Be helpful but not overly formal
+      - Keep responses concise and engaging
+      - Use contractions (I'm, you're, that's)
+      - Maintain a helpful, professional tone
+      - Focus on US real estate context
     `;
 
     try {
@@ -229,7 +256,7 @@ export class PropertyAgent {
       }
     } catch (error) {
       debugLog('Error generating AI response:', error);
-      return "Oops! I ran into a little trouble there. Mind trying again?";
+      return "I apologize, but I encountered an error while processing your request. Please try again.";
     }
   }
 

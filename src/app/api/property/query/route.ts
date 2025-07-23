@@ -81,34 +81,7 @@ export async function POST(req: Request) {
       });
     }
 
-    // Save AI response
-    await prisma.chatMessage.create({
-      data: {
-        chatId: chat.id,
-        role: "assistant",
-        content: aiResponse,
-      },
-    });
-
-    // Update chat title if it's the first message
-    const chatWithMessages = await prisma.chat.findUnique({
-      where: { id: chat.id },
-      include: { messages: true },
-    });
-
-    if (chatWithMessages && chatWithMessages.messages.length === 2) {
-      await prisma.chat.update({
-        where: { id: chat.id },
-        data: {
-          title: query.slice(0, 30) + (query.length > 30 ? "..." : ""),
-        },
-      });
-    }
-
-    return NextResponse.json({ response: aiResponse, chatId: chat.id },{status:200,headers: {
-      'Cache-Control': 's-maxage=259200, stale-while-revalidate=60', // 3 days cache, 1 min stale
-      'Content-Type': 'application/json',
-    }});
+    return NextResponse.json({ response: aiResponse });
   } catch (error) {
     console.error("Error processing property query:", error);
     return NextResponse.json(

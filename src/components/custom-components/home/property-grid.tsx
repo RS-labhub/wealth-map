@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useMemo } from "react"
+import { useEffect, useState, useMemo, useRef } from "react"
 
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -73,6 +73,9 @@ export default function PropertyGrid({
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const itemsPerPage = 12
   const {data }=useSession()
+  const [isMobile, setIsMobile] = useState(false)
+  const [mobilePage, setMobilePage] = useState(1)
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
   if (data) {
@@ -173,6 +176,39 @@ const filteredProperties = useMemo(() => {
   // Paginate properties
   const totalPages = Math.ceil(sortedProperties.length / itemsPerPage)
   const paginatedProperties = sortedProperties.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+
+  // Detect mobile with media query
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.matchMedia("(max-width: 767px)").matches)
+    }
+    checkMobile()
+    window.addEventListener("resize", checkMobile)
+    return () => window.removeEventListener("resize", checkMobile)
+  }, [])
+
+  // Infinite scroll for mobile
+  useEffect(() => {
+    if (!isMobile) return
+    const observer = new window.IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setMobilePage((prev) => {
+            if (prev < totalPages) return prev + 1
+            return prev
+          })
+        }
+      },
+      { threshold: 1 }
+    )
+    if (sentinelRef.current) observer.observe(sentinelRef.current)
+    return () => observer.disconnect()
+  }, [isMobile, totalPages])
+
+  // Properties to show (infinite scroll on mobile, paginated on desktop)
+  const visibleProperties = isMobile
+    ? sortedProperties.slice(0, mobilePage * itemsPerPage)
+    : paginatedProperties
 
   // Get confidence level color
   const getConfidenceColor = (level: string) => {
@@ -278,8 +314,8 @@ const filteredProperties = useMemo(() => {
           </svg>
         </div>
 
-        <div className="flex items-center gap-3 w-full md:w-auto">
-          <Sheet open={isFilterOpen} onOpenChange={setIsFilterOpen}>
+      <div className={`flex items-center gap-3 w-full md:w-auto ${isMobile ? "justify-end " : ""}`}>
+       { !isMobile && <Sheet open={isFilterOpen} onOpenChange={setIsFilterOpen}>
             <SheetTrigger asChild>
               <Button variant="outline" size="sm" className="relative h-11 border-gray-300 hover:border-green-500">
                 <SlidersHorizontal className="h-4 w-4 mr-2" />
@@ -311,7 +347,7 @@ const filteredProperties = useMemo(() => {
                 />
               </div>
             </SheetContent>
-          </Sheet>
+          </Sheet>}
 
           <Select value={sortBy} onValueChange={setSortBy}>
             <SelectTrigger className="w-[180px] h-11 border-gray-300 focus:border-green-500">
@@ -329,7 +365,7 @@ const filteredProperties = useMemo(() => {
             </SelectContent>
           </Select>
 
-          <div className="flex bg-gray-100 rounded-md p-1 border border-gray-200">
+         { !isMobile && <div className="flex bg-gray-100 rounded-md p-1 border border-gray-200">
             <Button
               variant={displayMode === "grid" ? "default" : "ghost"}
               size="sm"
@@ -346,7 +382,7 @@ const filteredProperties = useMemo(() => {
             >
               <List className="h-4 w-4" />
             </Button>
-          </div>
+          </div>}
         </div>
       </div>
 
@@ -421,7 +457,7 @@ const filteredProperties = useMemo(() => {
       )}
 
       {/* Results Section */}
-      {paginatedProperties.length === 0 ? (
+      {visibleProperties.length === 0 ? (
         <div className="text-center py-16">
           <div className="bg-gray-50 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
             <Grid3X3 className="h-8 w-8 text-gray-400" />
@@ -439,7 +475,7 @@ const filteredProperties = useMemo(() => {
           {/* Grid View */}
           {displayMode === "grid" && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {paginatedProperties.map((property) => (
+              {visibleProperties.map((property) => (
                 <Link href={`/app/employee/property/${property.id}`} key={property.id}>
                   <Card className="h-full hover:shadow-xl transition-all duration-300 border-gray-200 hover:border-green-300 group">
                     <div className="relative h-48 w-full overflow-hidden rounded-t-lg">
@@ -512,7 +548,7 @@ const filteredProperties = useMemo(() => {
           {/* List View */}
           {displayMode === "list" && (
             <div className="space-y-4">
-              {paginatedProperties.map((property) => (
+              {visibleProperties.map((property) => (
                 <Link href={`/app/employee/property/${property.id}`} key={property.id}>
                   <Card className="hover:shadow-lg transition-all duration-300 border-gray-200 hover:border-green-300 group">
                     <CardContent className="p-0">
@@ -558,12 +594,7 @@ const filteredProperties = useMemo(() => {
                                   fill={bookmarkedPropertyIds.includes(property.id) ? "currentColor" : "none"}
                                 />
                               </button>
-                              <Avatar className="h-8 w-8">
-                                <AvatarImage src={`/placeholder.svg?height=50&width=50&query=avatar`} />
-                                <AvatarFallback className="text-xs">
-                                  {property.owners?.[0]?.name?.charAt(0) ?? "?"}
-                                </AvatarFallback>
-                              </Avatar>
+                            
                             </div>
                           </div>
 
@@ -597,8 +628,8 @@ const filteredProperties = useMemo(() => {
             </div>
           )}
 
-          {/* Pagination */}
-          {totalPages > 1 && (
+          {/* Pagination (desktop only) */}
+          {!isMobile && totalPages > 1 && (
             <div className="mt-8 mb-8 flex justify-center">
               <Pagination>
                 <PaginationContent>
@@ -619,6 +650,13 @@ const filteredProperties = useMemo(() => {
                   </PaginationItem>
                 </PaginationContent>
               </Pagination>
+            </div>
+          )}
+
+          {/* Infinite scroll sentinel (mobile only) */}
+          {isMobile && visibleProperties.length < sortedProperties.length && (
+            <div ref={sentinelRef} className="h-12 flex items-center justify-center text-gray-400">
+              Loading more properties...
             </div>
           )}
         </>

@@ -62,17 +62,20 @@ export default function HomePage() {
   const [viewMode, setViewMode] = useState<"map" | "grid">("grid");
   const [valueRange, setValueRange] = useState<[number, number]>([0, 0]);
   const [sqftRange, setSqftRange] = useState<[number, number]>([0, 10000]);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
       // Check if cache is valid
       if (isPropertyCacheValid() && isOwnerCacheValid()) {
         setProperties(getAllProperties());
+        console.log("properties",properties);
         setFilteredProperties(getAllProperties());
         return;
       }
       // Otherwise, fetch from API
       try {
+        setIsLoading(true);
         const propertyRes = await propertyService.getProperties();
         const ownerRes = await ownerService.getOwners();
         setAllProperties(propertyRes);
@@ -81,12 +84,14 @@ export default function HomePage() {
         setFilteredProperties(propertyRes);
       } catch (err) {
         console.error('Failed to fetch properties:', err);
+      } finally {
+        setIsLoading(false);
       }
     };
     fetchData();
   }, []);
 
-  console.log(properties);
+
   
   // Get unique property types and owner types
   const propertyTypes = Array.from(new Set(properties.map((p) => p.type)));
@@ -219,8 +224,17 @@ export default function HomePage() {
     setIsFilterOpen(false)
     setIsSavedViewsOpen(false)
   }
+  
+    if (isLoading) {
+      return (
+        <div className="flex justify-center items-center h-screen">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+        </div>
+      );
+    }
 
   return (
+
     <div className="relative h-screen w-full overflow-hidden">
       {/* View Toggle */}
       <div className="absolute top-4 left-4 z-20">

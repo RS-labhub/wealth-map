@@ -16,6 +16,7 @@ import {
   CheckCircle,
   Play,
 } from "lucide-react"
+import Image from "next/image"
 
 export default function Home() {
   const router = useRouter()
@@ -118,6 +119,13 @@ export default function Home() {
           <div
             className={`max-w-4xl mx-auto text-center transition-all duration-1000 ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"}`}
           >
+            {/* Logo */}
+            <div className="flex justify-center mb-8">
+              <div className="p-4 bg-white/10 backdrop-blur-sm rounded-2xl">
+                <Image src="/icon.svg" alt="Wealth Map Logo" width={80} height={80} className="animate-pulse" />
+              </div>
+            </div>
+
             {/* Badge */}
             <div className="inline-flex items-center gap-2 bg-green-50 border border-green-200 rounded-full px-4 py-2 mb-8">
               <Star className="h-4 w-4 text-green-600 fill-green-600" />

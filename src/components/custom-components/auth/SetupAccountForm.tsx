@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { Suspense } from "react";
 
 const formSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -27,7 +28,7 @@ const formSchema = z.object({
   path: ["confirmPassword"],
 });
 
-export function SetupAccountForm() {
+function SetupAccountFormContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const organizationId = searchParams.get("organizationId");
@@ -143,5 +144,13 @@ export function SetupAccountForm() {
         </Button>
       </form>
     </Form>
+  );
+}
+
+export function SetupAccountForm() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <SetupAccountFormContent />
+    </Suspense>
   );
 } 

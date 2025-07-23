@@ -393,7 +393,7 @@ const config = {
       "value": "prisma-client-js"
     },
     "output": {
-      "value": "/home/rohitt/wealth/src/generated/prisma",
+      "value": "C:\\Users\\Rohith\\projects\\wealth\\src\\generated\\prisma",
       "fromEnvVar": null
     },
     "config": {
@@ -402,12 +402,12 @@ const config = {
     "binaryTargets": [
       {
         "fromEnvVar": null,
-        "value": "debian-openssl-3.0.x",
+        "value": "windows",
         "native": true
       }
     ],
     "previewFeatures": [],
-    "sourceFilePath": "/home/rohitt/wealth/prisma/schema.prisma",
+    "sourceFilePath": "C:\\Users\\Rohith\\projects\\wealth\\prisma\\schema.prisma",
     "isCustomOutput": true
   },
   "relativeEnvPaths": {

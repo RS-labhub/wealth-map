@@ -5,6 +5,7 @@ import * as maptilersdk from "@maptiler/sdk"
 import "@maptiler/sdk/dist/maptiler-sdk.css"
 import { Property } from "@/Models/models"
 import { Skeleton } from "@/components/ui/skeleton"
+import { faker } from '@faker-js/faker'
 
 // Proper interface for the Map instance
 interface MapRef extends maptilersdk.Map {

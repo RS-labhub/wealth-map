@@ -1,9 +1,10 @@
-import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { NextResponse, NextRequest } from "next/server";
+import { PrismaClient } from "@/generated/prisma";
 import { auth } from "@/lib/auth";
 import { authOptions } from "@/lib/auth";
 import { z } from "zod";
 import { Resend } from 'resend';
+import crypto from "crypto";
 
 const prisma = new PrismaClient();
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -14,8 +15,8 @@ const invitationSchema = z.object({
 });
 
 export async function POST(
-  req: Request,
-  { params }: { params: { id: string } }
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth();
@@ -23,11 +24,14 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const { id } = await context.params;
+    const { email, role } = await request.json();
+
     // Check if user is an admin of the organization
     const member = await prisma.member.findFirst({
       where: {
         userId: session.user.id,
-        organizationId: params.id,
+        organizationId: id,
         role: "admin",
       },
     });
@@ -36,12 +40,9 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const body = await req.json();
-    const validatedData = invitationSchema.parse(body);
-
     // Check if user already exists
     const existingUser = await prisma.user.findUnique({
-      where: { email: validatedData.email },
+      where: { email },
     });
 
     if (existingUser) {
@@ -49,7 +50,7 @@ export async function POST(
       const existingMember = await prisma.member.findFirst({
         where: {
           userId: existingUser.id,
-          organizationId: params.id,
+          organizationId: id,
         },
       });
 
@@ -64,9 +65,10 @@ export async function POST(
     // Create invitation
     const invitation = await prisma.invitation.create({
       data: {
-        email: validatedData.email,
-        organizationId: params.id,
-        role: validatedData.role,
+        id: crypto.randomUUID(),
+        email,
+        organizationId: id,
+        role: role || "member",
         status: "pending",
         inviterId: session.user.id,
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
@@ -75,12 +77,12 @@ export async function POST(
 
     // Send invitation email
     const organization = await prisma.organization.findUnique({
-      where: { id: params.id },
+      where: { id: id },
     });
 
     await resend.emails.send({
       from: process.env.RESEND_FROM_EMAIL as string,
-      to: validatedData.email,
+      to: email,
       subject: `Invitation to join ${organization?.name}`,
       html: `
         <p>You have been invited to join ${organization?.name}.</p>
@@ -111,42 +113,21 @@ export async function POST(
 
 // Get all invitations for an organization
 export async function GET(
-  req: Request,
-  { params }: { params: { id: string } }
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth();
-    
     if (!session?.user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Check if user is an admin of the organization
-    const member = await prisma.member.findFirst({
-      where: {
-        userId: session.user.id,
-        organizationId: params.id,
-        role: "admin",
-      },
-    });
+    const { id } = await context.params;
 
-    if (!member) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 403 }
-      );
-    }
-
+    // Get invitations for organization
     const invitations = await prisma.invitation.findMany({
-      where: {
-        organizationId: params.id,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
+      where: { organizationId: id },
+      orderBy: { expiresAt: "desc" },
     });
 
     return NextResponse.json(invitations);

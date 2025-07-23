@@ -48,22 +48,10 @@ export function AccountProfile() {
         const response = await fetch('/api/user/stats')
         if (response.ok) {
           const data = await response.json()
-          setStats({
-            totalReports: data.totalReports || 0,
-            propertiesAnalyzed: data.propertiesAnalyzed || 0,
-            savedProperties: data.savedProperties || 0,
-            recentActivity: data.recentActivity || []
-          })
+          setStats(data)
         }
       } catch (error) {
         console.error('Error fetching user stats:', error)
-        // Set default values if fetch fails
-        setStats({
-          totalReports: 0,
-          propertiesAnalyzed: 0,
-          savedProperties: 0,
-          recentActivity: []
-        })
       }
     }
 
@@ -121,7 +109,7 @@ export function AccountProfile() {
         </Button>
       </div>
 
-      <Card className="overflow-hidden border-0 shadow-md">
+      <Card>
         <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-6">
           <div className="flex flex-col sm:flex-row gap-6 items-center sm:items-start">
             <div className="flex-shrink-0">
@@ -188,50 +176,50 @@ export function AccountProfile() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card className="shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="bg-blue-50 p-2 rounded-full">
-                <FileText className="h-5 w-5 text-blue-600" />
-              </div>
-              <h3 className="text-lg font-medium">Reports & Analytics</h3>
+      <Card className="shadow-sm">
+        <CardContent className="p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="bg-blue-50 p-2 rounded-full">
+              <FileText className="h-5 w-5 text-blue-600" />
+            </div>
+            <h3 className="text-lg font-medium">Reports & Analytics</h3>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <span className="text-muted-foreground">Total Reports Generated</span>
+              <span className="font-semibold text-lg">{stats.totalReports}</span>
             </div>
 
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Total Reports Generated</span>
-                <span className="font-semibold text-lg">{stats.totalReports}</span>
-              </div>
+            <Separator />
 
-              <Separator />
-
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Properties Analyzed</span>
-                <span className="font-semibold text-lg">{stats.propertiesAnalyzed}</span>
-              </div>
-
-              <Separator />
-
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Saved Properties</span>
-                <span className="font-semibold text-lg">{stats.savedProperties}</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="bg-amber-50 p-2 rounded-full">
-                <User className="h-5 w-5 text-amber-600" />
-              </div>
-              <h3 className="text-lg font-medium">Recent Activity</h3>
+            <div className="flex justify-between items-center">
+              <span className="text-muted-foreground">Properties Analyzed</span>
+              <span className="font-semibold text-lg">{stats.propertiesAnalyzed}</span>
             </div>
 
-            <div className="space-y-4">
-              {stats.recentActivity.map((activity: any, index: number) => (
+            <Separator />
+
+            <div className="flex justify-between items-center">
+              <span className="text-muted-foreground">Saved Properties</span>
+              <span className="font-semibold text-lg">{stats.savedProperties}</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-sm">
+        <CardContent className="p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="bg-amber-50 p-2 rounded-full">
+              <User className="h-5 w-5 text-amber-600" />
+            </div>
+            <h3 className="text-lg font-medium">Recent Activity</h3>
+          </div>
+
+          <div className="space-y-4">
+            {stats.recentActivity.length > 0 ? (
+              stats.recentActivity.map((activity, index) => (
                 <div key={index} className="flex justify-between items-start">
                   <div>
                     <p className="font-medium">{activity.action}</p>
@@ -239,11 +227,13 @@ export function AccountProfile() {
                   </div>
                   <span className="text-sm text-muted-foreground">{activity.time}</span>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+              ))
+            ) : (
+              <p className="text-muted-foreground text-center py-4">No recent activity</p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

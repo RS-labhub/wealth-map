@@ -147,7 +147,7 @@ export function FloatingChatButton() {
                 
                 <div className="flex-1 flex flex-col h-[calc(100vh-8rem)]">
                   <ScrollArea className="flex-1 overflow-hidden">
-                    <div className="flex flex-col h-full">
+                    <div className="flex flex-col h-[calc(100vh-10rem)]">
                       {messages.length === 0 ? (
                         <div className="flex-1 flex items-center justify-center p-4">
                           <div className="text-center text-muted-foreground">

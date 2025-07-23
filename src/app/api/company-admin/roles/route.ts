@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import { PrismaClient } from "@/generated/prisma";
 import { auth } from "@/lib/auth";
 
@@ -117,8 +117,8 @@ export async function POST(req: Request) {
 
 // DELETE /api/company-admin/roles/[roleId]
 export async function DELETE(
-  req: Request,
-  { params }: { params: { roleId: string } }
+  request: NextRequest,
+  context: { params: Promise<{ roleId: string }> }
 ) {
   try {
     const session = await auth();
@@ -126,34 +126,13 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get user's organization
-    const userOrg = await prisma.member.findFirst({
-      where: { userId: session.user.id },
-      include: { organization: true },
-    });
-
-    if (!userOrg) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if role exists and belongs to the organization
-    const role = await prisma.customRole.findFirst({
-      where: {
-        id: params.roleId,
-        organizationId: userOrg.organizationId,
-      },
-    });
-
-    if (!role) {
-      return NextResponse.json(
-        { error: "Role not found or cannot be deleted" },
-        { status: 404 }
-      );
-    }
+    const { roleId } = await context.params;
 
     // Delete the role
-    await prisma.customRole.delete({
-      where: { id: params.roleId },
+    await prisma.role.delete({
+      where: {
+        id: roleId,
+      },
     });
 
     return NextResponse.json({ success: true });

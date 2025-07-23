@@ -1,12 +1,12 @@
-import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { NextResponse, NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
+import { PrismaClient } from "@/generated/prisma";
 
 const prisma = new PrismaClient();
 
 export async function PATCH(
-  req: Request,
-  { params }: { params: { id: string } }
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth();
@@ -14,41 +14,20 @@ export async function PATCH(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get user's organization
-    const userOrg = await prisma.member.findFirst({
-      where: { userId: session.user.id },
-      include: { organization: true },
+    const { id } = await context.params;
+    const { status } = await request.json();
+
+    // Update employee status
+    await prisma.user.update({
+      where: { id },
+      data: { currentRole: status },
     });
 
-    if (!userOrg || userOrg.role !== 'admin') {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Get target employee
-    const employee = await prisma.member.findFirst({
-      where: {
-        userId: params.id,
-        organizationId: userOrg.organizationId,
-      },
-    });
-
-    if (!employee) {
-      return NextResponse.json({ error: "Employee not found" }, { status: 404 });
-    }
-
-    // Toggle status
-    const updatedEmployee = await prisma.member.update({
-      where: { id: employee.id },
-      data: {
-        status: employee.status === 'active' ? 'inactive' : 'active',
-      },
-    });
-
-    return NextResponse.json(updatedEmployee);
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Status update error:', error);
+    console.error("Error updating employee status:", error);
     return NextResponse.json(
-      { error: "Failed to update status" },
+      { error: "Failed to update employee status" },
       { status: 500 }
     );
   }

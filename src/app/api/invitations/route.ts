@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@/generated/prisma";
 import { auth } from "@/lib/auth";
 import { Resend } from 'resend';
 import crypto from 'crypto';

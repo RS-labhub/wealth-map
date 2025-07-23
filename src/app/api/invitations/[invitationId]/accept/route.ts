@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import { PrismaClient } from "@/generated/prisma";
 import { auth } from "@/lib/auth";
 import crypto from "crypto";
@@ -6,8 +6,8 @@ import crypto from "crypto";
 const prisma = new PrismaClient();
 
 export async function POST(
-  req: Request,
-  { params }: { params: { invitationId: string } }
+  request: NextRequest,
+  context: { params: Promise<{ invitationId: string }> }
 ) {
   try {
     const session = await auth();
@@ -19,9 +19,11 @@ export async function POST(
       );
     }
 
+    const { invitationId } = await context.params;
+
     // Get invitation
     const invitation = await prisma.invitation.findUnique({
-      where: { id: params.invitationId },
+      where: { id: invitationId },
     });
 
     if (!invitation) {
@@ -62,7 +64,7 @@ export async function POST(
       data: { status: "accepted" },
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, invitation });
   } catch (error) {
     console.error("Error accepting invitation:", error);
     return NextResponse.json(

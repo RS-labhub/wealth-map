@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { capitalizeFirstLetter, Property } from "@/Models/models"
+import usePropertyStore from "@/stores/propertyStore"
 import {
   BarChart as ReBarChart,
   Bar,
@@ -24,7 +25,7 @@ import {
 } from "recharts";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { getProperties } from "../trending/property-store" // Ensure this path is correct
+import PropertyService from "@/services/propertyService"
 import { BarChart, PieChart, LineChart, Save, Share, Download, Plus, Trash2, Search } from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
 import {
@@ -41,6 +42,7 @@ import html2canvas from 'html2canvas-pro'; // Make sure you have the latest vers
 import jsPDF from 'jspdf';
 import { format } from "date-fns"
 import { Report } from "@/Models/models"
+import { createReport } from "@/lib/api/reports"
 
 interface ReportChartRendererProps {
   report: Report;
@@ -176,11 +178,8 @@ const ReportChartRenderer: React.FC<ReportChartRendererProps> = ({
               {pieChart.data.length > 0 ? (
                 // Adjusted height for pie chart to ensure legend fits
                 <div className="h-72 w-full">
-                  <ResponsiveContainer width="100%" height="100%"
-                    // Added margin-right to give more space for the legend
-                    margin={isDownloadPreview ? { top: 20, right: 100, bottom: 20, left: 20 } : { top: 20, right: 20, bottom: 20, left: 20 }}
-                  >
-                    <RePieChart>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RePieChart margin={isDownloadPreview ? { top: 20, right: 100, bottom: 20, left: 20 } : { top: 20, right: 20, bottom: 20, left: 20 }}>
                       <Pie
                         data={pieChart.data}
                         dataKey="value"
@@ -268,6 +267,9 @@ const ReportChartRenderer: React.FC<ReportChartRendererProps> = ({
 
 
 export default function CustomReports() {
+  const propertyService = new PropertyService();
+  const {isCacheValid,getAllProperties}=usePropertyStore()
+
   const [activeTab, setActiveTab] = useState("create")
   const [reportName, setReportName] = useState("")
   const [reportDescription, setReportDescription] = useState("")
@@ -284,12 +286,17 @@ const [chartType, setChartType] = useState<Report['type']>("bar")
   const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8", "#82ca9d", "#ffc658", "#d0ed57", "#a4de6c", "#c2d6ff", "#f5d7d7", "#d7f5d7", "#d7d7f5"];
 
   useEffect(() => {
-  const fetchProperties = async () => {
-    const { allProperties } = await getProperties();
-    setProperties(allProperties);
-  };
-  fetchProperties();
-}, []);
+    const fetchProperties = async () => {
+      if (isCacheValid()) {
+        setProperties(getAllProperties());
+      } else {
+        const res = await propertyService.getProperties();
+        setProperties(res);
+      }
+    };
+
+    fetchProperties();
+  }, [isCacheValid, getAllProperties, propertyService]);
   // Refs for chart previews
   const createChartRef = useRef<HTMLDivElement>(null); // For the chart in the "Create" tab
   const hiddenChartRef = useRef<HTMLDivElement>(null); // For the hidden chart to be captured
@@ -320,7 +327,7 @@ const [chartType, setChartType] = useState<Report['type']>("bar")
       property.address.toLowerCase().includes(propertySearchTerm.toLowerCase()) ||
       property.city.toLowerCase().includes(propertySearchTerm.toLowerCase()) ||
       property.price.toString().toLowerCase().includes(propertySearchTerm.toLowerCase()) ||
-      property.type.toLowerCase().includes(propertySearchTerm.toLowerCase())
+      (property.type as string).toLowerCase().includes(propertySearchTerm.toLowerCase())
 
     return passesConfidenceFilter && passesSearchFilter
   })
@@ -353,7 +360,7 @@ const [chartType, setChartType] = useState<Report['type']>("bar")
   }
 
   // Save report
-  const saveReport = () => {
+  const saveReport = async () => {
     if (!reportName) {
       toast({
         title: "Report name required",
@@ -381,34 +388,65 @@ const [chartType, setChartType] = useState<Report['type']>("bar")
       return
     }
 
-    const newReport: Report = {
-      id: Date.now().toString(),
-      name: reportName,
-      description: reportDescription,
-      created: format(new Date(), 'MMM dd, yyyy'),
-      type: chartType,
-      properties: selectedProperties,
-      fields: selectedFields,
-      shared: false,
+    try {
+      // Create the report data
+      const reportData = {
+        title: reportName,
+        description: reportDescription,
+        reportType: chartType,
+        notes: JSON.stringify({
+          properties: selectedProperties,
+          fields: selectedFields,
+          data: properties.filter(p => selectedProperties.includes(p.id))
+            .map(p => {
+              const data: any = { id: p.id };
+              selectedFields.forEach(field => {
+                data[field] = p[field as keyof typeof p];
+              });
+              return data;
+            })
+        }),
+        exported: true
+      };
+
+      // Save to database
+      const savedReport = await createReport(reportData);
+
+      // Update local state
+      setSavedReports([...savedReports, {
+        id: savedReport.id,
+        name: savedReport.title,
+        description: savedReport.description,
+        created: format(new Date(savedReport.createdAt), 'MMM dd, yyyy'),
+        type: savedReport.reportType as Report['type'],
+        properties: selectedProperties,
+        fields: selectedFields,
+        shared: false,
+      }]);
+
+      toast({
+        title: "Report saved",
+        description: "Your custom report has been saved successfully.",
+        variant: "default",
+      });
+
+      // Reset form
+      setReportName("");
+      setReportDescription("");
+      setSelectedProperties([]);
+      setSelectedFields([]);
+      setChartType("bar");
+
+      // Switch to saved reports tab
+      setActiveTab("saved");
+    } catch (error) {
+      console.error('Error saving report:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save report. Please try again.",
+        variant: "destructive",
+      });
     }
-
-    setSavedReports([...savedReports, newReport])
-
-    toast({
-      title: "Report saved",
-      description: "Your custom report has been saved successfully.",
-      variant: "default",
-    })
-
-    // Reset form
-    setReportName("")
-    setReportDescription("")
-    setSelectedProperties([])
-    setSelectedFields([])
-    setChartType("bar")
-
-    // Switch to saved reports tab
-    setActiveTab("saved")
   }
 
   // Delete report
@@ -514,7 +552,7 @@ const [chartType, setChartType] = useState<Report['type']>("bar")
           heightLeft -= pageHeight;
         }
 
-        pdf.save(`${report.name.replace(/\s+/g, '_')}_Report.pdf`);
+        pdf.save(`${(report.name as string) .replace(/\s+/g, '_')}_Report.pdf`);
 
         toast({
           title: "Download complete",
@@ -647,7 +685,7 @@ const [chartType, setChartType] = useState<Report['type']>("bar")
                         />
                         <div>
                           <Label htmlFor={property.id} className="font-medium">
-                            {capitalizeFirstLetter(property.type)} {property.city}
+                            {capitalizeFirstLetter(property.type as string)} {property.city}
                           </Label>
                           <p className="text-sm text-gray-500">{property.address}</p>
                           <p className="text-sm text-gray-500">Value: {property.price}</p>

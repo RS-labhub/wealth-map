@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Property as PropertyType } from "@/Models/models"
 import {
   MapPin,
   Eye,
@@ -22,170 +23,172 @@ import {
   Activity,
 } from "lucide-react"
 import Link from "next/link"
+import { faker } from '@faker-js/faker' // Ensure faker is installed: npm install @faker-js/faker
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import type { Property } from "@/Models/models"
-import MapView from "@/components/custom-components/trending/map-view"
+import { getProperties, type Property } from "./property-store" // Ensure this path is correct
+import MapView from "@/components/custom-components/trending/map-view" // Ensure this path is correct
+import { formatKMB } from "@/Models/models" // Ensure this path is correct
+
+// Helper function to transform properties for MapView
+const transformProperties = (properties: Property[]): PropertyType[] => {
+  return properties.map((property) => ({
+    id: property.id,
+    name: property.address, // Use address as name for MapView if no specific name field
+    images: [faker.image.urlLoremFlickr({ category: 'house', width: 640, height: 480 })], // Generate a random image for consistency
+    lastUpdated: property.lastUpdated,
+    price: Number(property.value),
+    address: property.address,
+    confidenceScore: property.confidenceLevel === "High" ? 100 : property.confidenceLevel === "Medium" ? 50 : 0,
+    coordinates: [property.coordinates[0], property.coordinates[1]],
+    ownerId: property.ownerId,
+    ownerName: property.ownerName,
+    ownerType: property.ownerType,
+    type: property.type,
+    trendingScore: property.trendingScore,
+    country: "United States", // Assuming default, adjust if needed
+    city: property.region,
+    state: property.state,
+    zipCode: property.zipCode,
+    area: Number(property.sqft),
+    views: property.views ?? 0,
+  }));
+};
 
 type TimelineFilter = "all" | "week" | "month" | "quarter"
 type ConfidenceFilter = "all" | "High" | "Medium" | "Low"
 type ViewsFilter = "all" | "high" | "medium" | "low"
 
+const propertyPlaceholderImages = [
+  "https://plus.unsplash.com/premium_photo-1689609950112-d66095626efb?w=900&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MXx8aG9tZXxlbnwwfHwwfHx8MA%3D%3D",
+  "https://images.unsplash.com/photo-1513584684374-8bab748fbf90?w=900&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Nnx8aG9tZXxlbnwwfHwwfHx8MA%3D%3D",
+  "https://media.istockphoto.com/id/2170393610/photo/colonial-style-house-at-dusk.webp?a=1&b=1&s=612x612&w=0&k=20&c=oBuv_cTulNFy_L-OHuqRj_LQxeD-QvfDM-ZyHm66zKk=",
+  "https://images.unsplash.com/photo-1605146769289-440113cc3d00?w=900&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MjR8fGhvbWV8ZW58MHx8MHx8fDA%3D",
+  "https://images.unsplash.com/photo-1583608205776-bfd35f0d9f83?w=900&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mjh8fGhvbWV8ZW58MHx8MHx8fDA%3D",
+  "https://images.unsplash.com/photo-1592595896551-12b371d546d5?w=900&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NDJ8fGhvbWV8ZW58MHx8MHx8fDA%3D",
+  "https://images.unsplash.com/photo-1628624747186-a941c476b7ef?w=900&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NTl8fGhvbWV8ZW58MHx8MHx8fDA%3D"
+];
+
 export default function TrendingProperties() {
-  const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>("all")
-  const [confidenceFilter, setConfidenceFilter] = useState<ConfidenceFilter>("all")
-  const [viewsFilter, setViewsFilter] = useState<ViewsFilter>("all")
-  const [currentPage, setCurrentPage] = useState(1)
-  const [activeTab, setActiveTab] = useState("hot")
-  const [viewMode, setViewMode] = useState<"grid" | "map">("grid")
-  const [trendingProperties, setTrendingProperties] = useState<Property[]>([])
-  const [hotProperties, setHotProperties] = useState<Property[]>([])
-  const [loading, setLoading] = useState(true)
-  const itemsPerPage = 8
+  const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>("all");
+  const [confidenceFilter, setConfidenceFilter] = useState<ConfidenceFilter>("all");
+  const [viewsFilter, setViewsFilter] = useState<ViewsFilter>("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [trendingProperties, setTrendingProperties] = useState<Property[]>([]);
+  const [hotProperties, setHotProperties] = useState<Property[]>([]);
+  const [isLoading, setIsLoading] = useState(true); // Renamed status to isLoading for clarity
+
+  const [activeTab, setActiveTab] = useState("hot");
+  const [viewMode, setViewMode] = useState<"grid" | "map">("grid");
+  const itemsPerPage = 8;
 
   useEffect(() => {
-    const fetchProperties = async () => {
+    const fetchData = async () => {
+      setIsLoading(true); // Start loading
       try {
-        const response = await fetch("/api/property/all")
-        if (!response.ok) {
-          throw new Error("Failed to fetch properties")
-        }
-
-        const data = await response.json()
-        // Map the API response to match the Property type
-        const mappedProperties = data.map((property: any) => ({
-          id: property.id,
-          name: property.name,
-          description: property.description || "",
-          address: property.address,
-          city: property.city,
-          state: property.state,
-          country: property.country,
-          zipCode: property.zipCode,
-          price: property.price,
-          images: property.images || [],
-          area: property.area,
-          bed: property.bed,
-          bath: property.bath,
-          type: property.type,
-          confidenceScore: property.confidenceScore ?? null,
-          createdAt: new Date(property.createdAt),
-          updatedAt: new Date(property.updatedAt),
-          owners: property.owners || [],
-          Bookmarks: property.Bookmarks || [],
-          views: property.views || [],
-          ownerType: property.ownerType,
-          confidence: property.confidence
-        }))
-        setTrendingProperties(mappedProperties)
-        // Get hot properties (top 8 by confidence score)
-        const hot = [...mappedProperties].sort((a, b) => (b.confidenceScore || 0) - (a.confidenceScore || 0)).slice(0, 8)
-        setHotProperties(hot)
+        const { trendingProperties, hotProperties } = await getProperties();
+        setTrendingProperties(trendingProperties);
+        setHotProperties(hotProperties);
       } catch (error) {
-        console.error("Error fetching properties:", error)
+        console.error("Failed to fetch properties:", error);
+        // Optionally, handle error state for UI
       } finally {
-        setLoading(false)
+        setIsLoading(false); // End loading
       }
-    }
-
-    fetchProperties()
-  }, [])
+    };
+    fetchData();
+  }, []);
 
   // Filter properties based on selected filters
   const filteredProperties = useMemo(() => {
-    let filtered = [...trendingProperties]
+    let filtered = [...trendingProperties]; // Use trendingProperties for "All Properties" tab
 
     // Apply timeline filter
     if (timelineFilter !== "all") {
-      const now = new Date()
+      const now = new Date();
       filtered = filtered.filter((property) => {
-        const updatedDate = new Date(property.updatedAt)
-        const diffTime = Math.abs(now.getTime() - updatedDate.getTime())
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+        const updatedDate = new Date(property.lastUpdated);
+        const diffTime = Math.abs(now.getTime() - updatedDate.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-        if (timelineFilter === "week") return diffDays <= 7
-        if (timelineFilter === "month") return diffDays <= 30
-        if (timelineFilter === "quarter") return diffDays <= 90
-        return true
-      })
+        if (timelineFilter === "week") return diffDays <= 7;
+        if (timelineFilter === "month") return diffDays <= 30;
+        if (timelineFilter === "quarter") return diffDays <= 90;
+        return true;
+      });
     }
 
     // Apply confidence filter
     if (confidenceFilter !== "all") {
-      filtered = filtered.filter((property) => {
-        const score = property.confidenceScore || 0
-        if (confidenceFilter === "High") return score >= 0.8
-        if (confidenceFilter === "Medium") return score >= 0.5 && score < 0.8
-        if (confidenceFilter === "Low") return score < 0.5
-        return true
-      })
+      filtered = filtered.filter((property) => property.confidenceLevel === confidenceFilter);
     }
 
     // Apply views filter
     if (viewsFilter !== "all") {
       filtered = filtered.filter((property) => {
-        const views = property.views?.length || 0
-        if (viewsFilter === "high") return views > 500
-        if (viewsFilter === "medium") return views >= 300 && views <= 500
-        if (viewsFilter === "low") return views < 300
-        return true
-      })
+       if (!property) return false;
+        if (viewsFilter === "high") return property.views > 500;
+        if (viewsFilter === "medium") return property.views >= 300 && property.views <= 500;
+        if (viewsFilter === "low") return property.views < 300;
+        return true;
+      });
     }
 
-    return filtered
-  }, [timelineFilter, confidenceFilter, viewsFilter, trendingProperties])
+    return filtered;
+  }, [timelineFilter, confidenceFilter, viewsFilter, trendingProperties]); // Add trendingProperties to dependency array
 
-  // Calculate pagination
-  const totalPages = Math.ceil(filteredProperties.length / itemsPerPage)
-  const paginatedProperties = filteredProperties.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+  // Calculate pagination for "All Properties" tab
+  const totalPages = Math.ceil(filteredProperties.length / itemsPerPage);
+  const paginatedProperties = filteredProperties.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   // Get confidence level color
-  const getConfidenceColor = (score: number | null) => {
-    if (!score) return "bg-gray-100 text-gray-800"
-    if (score >= 0.8) return "bg-green-100 text-green-800"
-    if (score >= 0.5) return "bg-yellow-100 text-yellow-800"
-        return "bg-red-100 text-red-800"
-  }
+  const getConfidenceColor = (level: string) => {
+    switch (level) {
+      case "High":
+        return "bg-green-100 text-green-800";
+      case "Medium":
+        return "bg-yellow-100 text-yellow-800";
+      case "Low":
+        return "bg-red-100 text-red-800";
+      default:
+        return "bg-gray-100 text-gray-800";
+    }
+  };
 
   // Get trending score color and icon
-  const getTrendingIndicator = (score: number | null) => {
-    if (!score) {
-      return {
-        color: "text-blue-600",
-        bgColor: "bg-blue-50",
-        icon: <Activity className="h-3 w-3 mr-1" />,
-        label: "Active",
-      }
-    }
+  const getTrendingIndicator = (score: number) => {
     if (score > 100) {
       return {
         color: "text-red-600",
         bgColor: "bg-red-50",
         icon: <Flame className="h-3 w-3 mr-1" />,
         label: "Hot",
-      }
+      };
     } else if (score > 50) {
       return {
         color: "text-orange-600",
         bgColor: "bg-orange-50",
         icon: <TrendingUp className="h-3 w-3 mr-1" />,
         label: "Rising",
-      }
+      };
     } else {
       return {
         color: "text-blue-600",
         bgColor: "bg-blue-50",
         icon: <Activity className="h-3 w-3 mr-1" />,
         label: "Active",
-      }
+      };
     }
-  }
+  };
 
   // Property card component to avoid duplication
   const PropertyCard = ({ property, rank }: { property: Property; rank?: number }) => {
-    const trendingIndicator = getTrendingIndicator(property.confidenceScore)
+    const trendingIndicator = getTrendingIndicator(property.trendingScore);
+    const randomImageIndex = faker.number.int({ min: 0, max: propertyPlaceholderImages.length - 1 });
+    const imageUrl = propertyPlaceholderImages[randomImageIndex];
 
     return (
-      <Link href={`/app/employee/property/${property.id}`} key={property.id}>
+      <Link href={`/app/property/${property.id}`} key={property.id}>
         <Card className="h-full hover:shadow-lg transition-shadow duration-200 relative overflow-hidden">
           {rank && (
             <div className="absolute top-0 left-0 w-10 h-10 bg-gray-800 flex items-center justify-center text-white font-bold text-lg z-10 rounded-tl-lg rounded-br-lg">
@@ -196,14 +199,14 @@ export default function TrendingProperties() {
             <div
               className="absolute inset-0 rounded-t-lg bg-gray-100"
               style={{
-                backgroundImage: `url('/placeholder-r0y0s.png')`,
+                backgroundImage: `url(${imageUrl})`,
                 backgroundSize: "cover",
                 backgroundPosition: "center",
               }}
             />
             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-3">
               <h3 className="font-bold text-lg text-white">
-                {property.type} in {property.city}, {property.state}
+                {property.type} {property.region}
               </h3>
               <div className="flex items-center text-white/90 mb-1">
                 <MapPin className="h-3 w-3 mr-1" />
@@ -221,38 +224,37 @@ export default function TrendingProperties() {
             <div className="flex justify-between mb-3">
               <Badge variant="outline" className="flex items-center gap-1">
                 <Eye className="h-3 w-3" />
-                {property.views?.length || 0}
+                {property.views??0}
               </Badge>
               <Badge variant="outline" className="flex items-center gap-1">
-                {property.area} sqft
+                {formatKMB(Number(property.sqft))} sqft
               </Badge>
-              <Badge className={`${getConfidenceColor(property.confidenceScore)} flex items-center gap-1`}>
+              <Badge className={`${getConfidenceColor(property.confidenceLevel)} flex items-center gap-1`}>
                 <Shield className="h-3 w-3" />
-                {property.confidenceScore ? (property.confidenceScore >= 0.8 ? "High" : property.confidenceScore >= 0.5 ? "Medium" : "Low") : "Unknown"}
+                {property.confidenceLevel}
               </Badge>
             </div>
             <div className="flex justify-between items-center">
               <div className="text-sm text-gray-600 flex items-center">
                 <Calendar className="h-3 w-3 mr-1" />
-                {new Date(property.updatedAt).toLocaleDateString()}
+                {new Date(property.lastUpdated).toLocaleDateString()} {/* Format date */}
               </div>
               <div className="flex items-center">
-                <span className="font-bold text-green-600 mr-2">${property.price.toLocaleString()}</span>
-                <Avatar className="h-6 w-6">
-                  <AvatarImage src={`/placeholder.svg?height=50&width=50&query=avatar`} />
-                  <AvatarFallback>{property.owners?.[0]?.owner?.name?.charAt(0) || "?"}</AvatarFallback>
-                </Avatar>
+                <span className="font-bold text-green-600 mr-2">${formatKMB(Number(property.value))}</span>
+               
               </div>
             </div>
           </CardContent>
         </Card>
       </Link>
-    )
-  }
+    );
+  };
 
   // Featured property card for the top trending property
   const FeaturedPropertyCard = ({ property }: { property: Property }) => {
-    const trendingIndicator = getTrendingIndicator(property.confidenceScore)
+    const trendingIndicator = getTrendingIndicator(property?.trendingScore);
+    const randomImageIndex = faker.number.int({ min: 0, max: propertyPlaceholderImages.length - 1 });
+    const imageUrl = propertyPlaceholderImages[randomImageIndex];
 
     return (
       <Card className="overflow-hidden border shadow-md">
@@ -261,7 +263,7 @@ export default function TrendingProperties() {
             <div
               className="absolute inset-0 bg-gray-200"
               style={{
-                backgroundImage: `url('/placeholder-r0y0s.png')`,
+                backgroundImage: `url(${imageUrl})`,
                 backgroundSize: "cover",
                 backgroundPosition: "center",
               }}
@@ -272,20 +274,20 @@ export default function TrendingProperties() {
               <span className="font-bold text-sm">Top Trending</span>
             </div>
           </div>
-          <CardContent className="p-6 md:w-3/5">
+          <div className="p-6 md:w-3/5">
             <div className="flex items-center mb-2">
               <Badge className={`${trendingIndicator.bgColor} ${trendingIndicator.color} mr-2`}>
                 {trendingIndicator.icon}
-                Confidence Score: {property.confidenceScore ? Math.round(property.confidenceScore * 100) : 0}%
+                Trending Score: {Math.round(property?.trendingScore)}
               </Badge>
               <Badge variant="outline" className="flex items-center gap-1">
                 <Eye className="h-3 w-3" />
-                {property.views?.length || 0} views
+                {property.views??0} views
               </Badge>
             </div>
 
             <h2 className="text-2xl font-bold mb-2">
-              {property.type} in {property.city}, {property.state}
+              {property.type} in {property.region}
             </h2>
 
             <div className="flex items-center text-gray-600 mb-4">
@@ -295,64 +297,69 @@ export default function TrendingProperties() {
 
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div className="flex items-center">
-                <Badge className={`${getConfidenceColor(property.confidenceScore)} mr-2`}>
+                <Badge className={`${getConfidenceColor(property.confidenceLevel)} mr-2`}>
                   <Shield className="h-3 w-3 mr-1" />
-                  {property.confidenceScore ? (property.confidenceScore >= 0.8 ? "High" : property.confidenceScore >= 0.5 ? "Medium" : "Low") : "Unknown"}
+                  {property.confidenceLevel}
                 </Badge>
               </div>
               <div className="flex items-center">
                 <Clock className="h-4 w-4 text-gray-500 mr-1" />
-                <span className="text-sm text-gray-600">{new Date(property.updatedAt).toLocaleDateString()}</span>
+                <span className="text-sm text-gray-600">{new Date(property.lastUpdated).toLocaleDateString()}</span>
               </div>
               <div className="flex items-center">
                 <BarChart3 className="h-4 w-4 text-gray-500 mr-1" />
-                <span className="text-sm text-gray-600">{property.area} sqft</span>
+                <span className="text-sm text-gray-600">{formatKMB(Number(property.sqft))} sqft</span>
               </div>
               <div className="flex items-center">
                 <Users className="h-4 w-4 text-gray-500 mr-1" />
-                <span className="text-sm text-gray-600">{property.owners?.[0]?.ownerType || "Unknown"}</span>
+                <span className="text-sm text-gray-600">{property.ownerType}</span>
               </div>
             </div>
 
             <div className="flex justify-between items-center">
               <div className="flex items-center">
-                <span className="font-bold text-2xl text-green-600 mr-2">${property.price.toLocaleString()}</span>
+                <span className="font-bold text-2xl text-green-600 mr-2">${formatKMB(Number(property.value))}</span>
                 <ArrowUpRight className="h-5 w-5 text-green-500" />
               </div>
-              <Link href={`/app/employee/property/${property.id}`}>
+              <Link href={`/app/property/${property.id}`}>
                 <Button>View Details</Button>
               </Link>
             </div>
-          </CardContent>
+          </div>
         </div>
       </Card>
-    )
-  }
+    );
+  };
 
   // Handle tab change
   const handleTabChange = (value: string) => {
-    setActiveTab(value)
-  }
+    setActiveTab(value);
+  };
 
   // Handle view all properties button click
   const handleViewAllClick = () => {
-    // This will switch to the "all" tab
-    setActiveTab("all")
-  }
+    setActiveTab("all");
+    setCurrentPage(1); // Reset pagination when switching tabs
+  };
 
   // Get top trending property
-  const topTrendingProperty = hotProperties[0]
+  const topTrendingProperty = hotProperties[0]; // Access after hotProperties is fetched
 
-  // Get trending categories
+  // Get trending categories (simplified for example)
   const trendingCategories = [
     { name: "Luxury", icon: <Flame className="h-5 w-5 text-gray-700" /> },
     { name: "Beachfront", icon: <Flame className="h-5 w-5 text-gray-700" /> },
     { name: "Urban", icon: <Flame className="h-5 w-5 text-gray-700" /> },
     { name: "Mountain", icon: <Flame className="h-5 w-5 text-gray-700" /> },
-  ]
+  ];
 
-  if (loading) {
-    return <div>Loading...</div>
+  // Show loading spinner
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+      </div>
+    );
   }
 
   return (
@@ -379,7 +386,7 @@ export default function TrendingProperties() {
             <div>
               <p className="text-sm text-gray-600">Total Views</p>
               <p className="text-2xl font-bold">
-                {trendingProperties.reduce((sum, p) => sum + (p.views?.length || 0), 0).toLocaleString()}
+                {trendingProperties.reduce((sum, p) => p.views?sum + p.views:sum, 0).toLocaleString()}
               </p>
             </div>
           </CardContent>
@@ -395,11 +402,11 @@ export default function TrendingProperties() {
               <p className="text-2xl font-bold">
                 {
                   trendingProperties.filter((p) => {
-                    const updatedDate = new Date(p.updatedAt)
-                    const now = new Date()
-                    const diffTime = Math.abs(now.getTime() - updatedDate.getTime())
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-                    return diffDays <= 7
+                    const updatedDate = new Date(p.lastUpdated);
+                    const now = new Date();
+                    const diffTime = Math.abs(now.getTime() - updatedDate.getTime());
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    return diffDays <= 7;
                   }).length
                 }
               </p>
@@ -415,9 +422,11 @@ export default function TrendingProperties() {
             <div>
               <p className="text-sm text-gray-600">Avg. Confidence</p>
               <p className="text-2xl font-bold">
-                {trendingProperties.filter((p) => (p.confidenceScore || 0) >= 0.8).length > trendingProperties.length / 2
+                {/* Ensure trendingProperties has items before accessing confidenceLevel */}
+                {trendingProperties.length > 0 && trendingProperties.filter((p) => p.confidenceLevel === "High").length > trendingProperties.length / 2
                   ? "High"
                   : "Medium"}
+                {trendingProperties.length === 0 && "N/A"}
               </p>
             </div>
           </CardContent>
@@ -425,13 +434,15 @@ export default function TrendingProperties() {
       </div>
 
       {/* Featured Property */}
-      <div className="mb-8">
-        <h2 className="text-xl font-bold mb-4 flex items-center">
-          <Flame className="mr-2 h-5 w-5 text-red-600" />
-          Featured Trending Property
-        </h2>
-        {topTrendingProperty && <FeaturedPropertyCard property={topTrendingProperty} />}
-      </div>
+      {topTrendingProperty && ( // Conditionally render only if topTrendingProperty exists
+        <div className="mb-8">
+          <h2 className="text-xl font-bold mb-4 flex items-center">
+            <Flame className="mr-2 h-5 w-5 text-red-600" />
+            Featured Trending Property
+          </h2>
+          <FeaturedPropertyCard property={topTrendingProperty} />
+        </div>
+      )}
 
       {/* Trending Categories */}
       <div className="mb-8">
@@ -451,7 +462,7 @@ export default function TrendingProperties() {
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={handleTabChange}>
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="mb-6">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="hot">Hot Properties</TabsTrigger>
           <TabsTrigger value="all">All Properties</TabsTrigger>
@@ -463,31 +474,37 @@ export default function TrendingProperties() {
               <TrendingUp className="mr-2 h-5 w-5 text-red-600" />
               Hot Properties
               <span className="text-sm font-normal ml-2 text-gray-500">
-                (Highest confidence score)
+                (Highest trending score based on views and recency)
               </span>
             </h2>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {hotProperties.slice(1).map((property, index) => (
-              <PropertyCard key={property.id} property={property} rank={index + 2} />
+            {/* Render hot properties, excluding the top one if it was featured */}
+            {hotProperties.slice(topTrendingProperty ? 1 : 0).map((property, index) => (
+              <PropertyCard key={property.id} property={property} rank={topTrendingProperty ? index + 2 : index + 1} />
             ))}
+            {hotProperties.length === 0 && <p className="col-span-full text-center text-gray-500">No hot properties found.</p>}
           </div>
 
-          <div className="mt-6 flex justify-center">
-            <Button variant="outline" onClick={handleViewAllClick} className="flex items-center">
-              View All Properties
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          </div>
+          {hotProperties.length > (topTrendingProperty ? 1 : 0) && ( // Only show button if there are more hot properties
+            <div className="mt-6 flex justify-center">
+              <Button variant="outline" onClick={handleViewAllClick} className="flex items-center">
+                View All Properties
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="all" className="mt-6">
-          <div className="flex justify-between items-center mb-4">
-            <div className="flex space-x-2">
+          {/* Filters */}
+          <div className="flex flex-col md:flex-row gap-4 mb-6 bg-white p-4 rounded-lg shadow">
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Timeline</label>
               <Select value={timelineFilter} onValueChange={(value) => setTimelineFilter(value as TimelineFilter)}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Timeline" />
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Filter by timeline" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Time</SelectItem>
@@ -496,32 +513,47 @@ export default function TrendingProperties() {
                   <SelectItem value="quarter">Last Quarter</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
 
-              <Select value={confidenceFilter} onValueChange={(value) => setConfidenceFilter(value as ConfidenceFilter)}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Confidence" />
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Views</label>
+              <Select value={viewsFilter} onValueChange={(value) => setViewsFilter(value as ViewsFilter)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Filter by views" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Confidence</SelectItem>
+                  <SelectItem value="all">All Views</SelectItem>
+                  <SelectItem value="high">High (500+)</SelectItem>
+                  <SelectItem value="medium">Medium (300-500)</SelectItem>
+                  <SelectItem value="low">Low (&lt; 300)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Confidence</label>
+              <Select
+                value={confidenceFilter}
+                onValueChange={(value) => setConfidenceFilter(value as ConfidenceFilter)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Filter by confidence" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Levels</SelectItem>
                   <SelectItem value="High">High</SelectItem>
                   <SelectItem value="Medium">Medium</SelectItem>
                   <SelectItem value="Low">Low</SelectItem>
                 </SelectContent>
               </Select>
-
-              <Select value={viewsFilter} onValueChange={(value) => setViewsFilter(value as ViewsFilter)}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Views" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Views</SelectItem>
-                  <SelectItem value="high">High Views</SelectItem>
-                  <SelectItem value="medium">Medium Views</SelectItem>
-                  <SelectItem value="low">Low Views</SelectItem>
-                </SelectContent>
-              </Select>
+            </div>
           </div>
 
+          {/* View toggle */}
+          <div className="flex justify-between items-center mb-4">
+            <div className="text-sm text-gray-600">
+              Showing {paginatedProperties.length} of {filteredProperties.length} properties
+            </div>
             <div className="flex space-x-2">
               <Button
                 variant={viewMode === "grid" ? "default" : "outline"}
@@ -561,17 +593,26 @@ export default function TrendingProperties() {
           </div>
 
           {/* Property display - grid or map */}
-          {viewMode === "grid" ? (
+          {viewMode === "grid" && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {paginatedProperties.map((property) => (
-                <PropertyCard key={property.id} property={property} />
-              ))}
-            </div>
-          ) : (
-            <div className="h-[600px] rounded-lg overflow-hidden border">
-              <MapView properties={paginatedProperties} />
+              {paginatedProperties.length > 0 ? (
+                paginatedProperties.map((property) => (
+                  <PropertyCard key={property.id} property={property} />
+                ))
+              ) : (
+                <p className="col-span-full text-center text-gray-500">No properties match your filters.</p>
+              )}
             </div>
           )}
+          {/* {viewMode === "map" && (
+            <div className="h-[600px] rounded-lg overflow-hidden border">
+              {paginatedProperties.length > 0 ? (
+                <MapView properties={transformProperties(paginatedProperties)} />
+              ) : (
+                <div className="flex justify-center items-center h-full text-gray-500">No properties to display on map with current filters.</div>
+              )}
+            </div>
+          )} */}
 
           {/* Pagination */}
           {totalPages > 1 && viewMode === "grid" && (
@@ -586,16 +627,16 @@ export default function TrendingProperties() {
                 </Button>
 
                 {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-                  let pageNumber
+                  let pageNumber;
                   if (totalPages <= 5) {
-                    pageNumber = i + 1
+                    pageNumber = i + 1;
                   } else {
                     if (currentPage <= 3) {
-                      pageNumber = i + 1
+                      pageNumber = i + 1;
                     } else if (currentPage >= totalPages - 2) {
-                      pageNumber = totalPages - 4 + i
+                      pageNumber = totalPages - 4 + i;
                     } else {
-                      pageNumber = currentPage - 2 + i
+                      pageNumber = currentPage - 2 + i;
                     }
                   }
                   return (
@@ -606,7 +647,7 @@ export default function TrendingProperties() {
                     >
                       {pageNumber}
                     </Button>
-                  )
+                  );
                 })}
 
                 <Button
@@ -622,5 +663,5 @@ export default function TrendingProperties() {
         </TabsContent>
       </Tabs>
     </div>
-  )
+  );
 }

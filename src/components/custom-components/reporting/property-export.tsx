@@ -7,15 +7,14 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { getProperties } from "../trending/property-store"
+import PropertyService from "@/services/propertyService"
 import { Download, FileText, Table, Search } from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
 import { Separator } from "@/components/ui/separator"
 import { Input } from "@/components/ui/input"
 import { capitalizeFirstLetter, Property } from "@/Models/models"
 import { format } from 'date-fns';
-import { usePermissions } from "@/hooks/usePermissions"
-import { WithPermission } from "@/components/auth/withPermission"
+import usePropertyStore from "@/stores/propertyStore"
 
 
 //Add a utility to generate export content
@@ -50,37 +49,6 @@ const exportData = async (
   let mimeType = "text/plain";
   if (format === "csv" || format === "excel") mimeType = "text/csv";
   if (format === "json") mimeType = "application/json";
-  
-  // Create a blob and get its URL
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  
-  // Save to database
-  try {
-    const response = await fetch('/api/reports/export', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        title: filename,
-        description: `Export of ${selectedProps.length} properties`,
-        reportType: format,
-        userId: 'current-user-id', // TODO: Get actual user ID
-        notes: `Fields: ${fields.join(', ')}`,
-        exportUrl: url,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to save export history');
-    }
-  } catch (error) {
-    console.error('Error saving export history:', error);
-    // Continue with download even if saving to history fails
-  }
-
-  // Download the file
   downloadFile(content, filename, mimeType);
   return new Promise((resolve) => setTimeout(resolve, 1500));
 };
@@ -99,13 +67,10 @@ function downloadFile(content: string, filename: string, mimeType: string) {
   }, 0);
 }
 export default function PropertyExport() {
-  const { hasPermission } = usePermissions()
-  const canExport = hasPermission("reports:create")
-  const canViewProperties = hasPermission("property:view")
-
+  const propertyService = new PropertyService();
   const [selectedProperties, setSelectedProperties] = useState<string[]>([])
     const [properties, setProperties] = useState<Property[]>([]);
-  
+  const {isCacheValid,getAllProperties}=usePropertyStore()
   const [selectedFormat, setSelectedFormat] = useState("csv")
   const [selectedFields, setSelectedFields] = useState<string[]>([
     "address",
@@ -120,12 +85,17 @@ export default function PropertyExport() {
   const [propertySearchTerm, setPropertySearchTerm] = useState("")
 
   useEffect(() => {
-  const fetchProperties = async () => {
-    const { allProperties } = await getProperties();
-    setProperties(allProperties);
-  };
-  fetchProperties();
-}, []);
+    const fetchProperties = async () => {
+      if (isCacheValid()) {
+        setProperties(getAllProperties());
+      } else {
+        const res = await propertyService.getProperties();
+        setProperties(res);
+      }
+    };
+
+    fetchProperties();
+  }, [isCacheValid, getAllProperties, propertyService]);
   // Available export formats
 const exportFormats = [
   { id: "csv", label: "CSV", icon: <FileText className="h-4 w-4" /> },
@@ -161,7 +131,7 @@ const exportFormats = [
       property.address.toLowerCase().includes(propertySearchTerm.toLowerCase()) ||
       property.city.toLowerCase().includes(propertySearchTerm.toLowerCase()) ||
       property.price.toString().toLowerCase().includes(propertySearchTerm.toLowerCase()) ||
-      property.type.toLowerCase().includes(propertySearchTerm.toLowerCase())
+      (property.type as string).toLowerCase().includes(propertySearchTerm.toLowerCase())
 
     return passesConfidenceFilter && passesSearchFilter
   })
@@ -247,204 +217,200 @@ const exportFormats = [
   }
 
   return (
-    <WithPermission permission="reports:create">
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Property Selection */}
-          <Card className="md:col-span-2">
-            <CardHeader>
-              <CardTitle>Select Properties</CardTitle>
-              <CardDescription>Choose the properties you want to export</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {/* Search Bar - Added before the filter options */}
-              <div className="mb-4">
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    type="text"
-                    placeholder="Search properties by name, location, or value..."
-                    className="pl-9 w-full"
-                    value={propertySearchTerm}
-                    onChange={(e) => setPropertySearchTerm(e.target.value)}
-                  />
-                </div>
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Property Selection */}
+        <Card className="md:col-span-2">
+          <CardHeader>
+            <CardTitle>Select Properties</CardTitle>
+            <CardDescription>Choose the properties you want to export</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {/* Search Bar - Added before the filter options */}
+            <div className="mb-4">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="text"
+                  placeholder="Search properties by name, location, or value..."
+                  className="pl-9 w-full"
+                  value={propertySearchTerm}
+                  onChange={(e) => setPropertySearchTerm(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center mb-4">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="selectAll"
+                  checked={selectedProperties.length === filteredProperties.length && filteredProperties.length > 0}
+                  onCheckedChange={selectAllProperties}
+                />
+                <Label htmlFor="selectAll">Select All</Label>
               </div>
 
-              <div className="flex justify-between items-center mb-4">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="selectAll"
-                    checked={selectedProperties.length === filteredProperties.length && filteredProperties.length > 0}
-                    onCheckedChange={selectAllProperties}
-                  />
-                  <Label htmlFor="selectAll">Select All</Label>
-                </div>
+              <Select value={propertyFilter} onValueChange={setPropertyFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Filter by confidence" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Properties</SelectItem>
+                  <SelectItem value="high">High Confidence</SelectItem>
+                  <SelectItem value="medium">Medium Confidence</SelectItem>
+                  <SelectItem value="low">Low Confidence</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-                <Select value={propertyFilter} onValueChange={setPropertyFilter}>
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder="Filter by confidence" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Properties</SelectItem>
-                    <SelectItem value="high">High Confidence</SelectItem>
-                    <SelectItem value="medium">Medium Confidence</SelectItem>
-                    <SelectItem value="low">Low Confidence</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="border rounded-md">
-                {filteredProperties.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-4 max-h-[400px] overflow-y-auto">
-                    {filteredProperties.map((property) => (
-                      <div key={property.id} className="flex items-start space-x-2">
-                        <Checkbox
-                          id={property.id}
-                          checked={selectedProperties.includes(property.id)}
-                          onCheckedChange={() => toggleProperty(property.id)}
-                        />
-                        <div>
-                          <Label htmlFor={property.id} className="font-medium">
-                            {capitalizeFirstLetter(property.type)} in  {property.city}
-                          </Label>
-                          <p className="text-sm text-gray-500">{property.address}</p>
-                          <p className="text-sm text-gray-500">Value: {property.price}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="p-8 text-center">
-                    <p className="text-muted-foreground">No properties found matching your search criteria.</p>
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-4 text-sm text-gray-500">
-                {selectedProperties.length} of {filteredProperties.length} properties selected
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Export Options */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Export Options</CardTitle>
-              <CardDescription>Configure your export settings</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-sm font-medium mb-3">Export Format</h3>
-                  <RadioGroup value={selectedFormat} onValueChange={setSelectedFormat}>
-                    {exportFormats.map((format) => (
-                      <div key={format.id} className="flex items-center space-x-2">
-                        <RadioGroupItem value={format.id} id={`format-${format.id}`} />
-                        <Label htmlFor={`format-${format.id}`} className="flex items-center">
-                          {format.icon}
-                          <span className="ml-2">{format.label}</span>
+            <div className="border rounded-md">
+              {filteredProperties.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-4 max-h-[400px] overflow-y-auto">
+                  {filteredProperties.map((property) => (
+                    <div key={property.id} className="flex items-start space-x-2">
+                      <Checkbox
+                        id={property.id}
+                        checked={selectedProperties.includes(property.id)}
+                        onCheckedChange={() => toggleProperty(property.id)}
+                      />
+                      <div>
+                        <Label htmlFor={property.id} className="font-medium">
+                          {capitalizeFirstLetter(property.type as string )} in  {property.city}
                         </Label>
+                        <p className="text-sm text-gray-500">{property.address}</p>
+                        <p className="text-sm text-gray-500">Value: {property.price}</p>
                       </div>
-                    ))}
-                  </RadioGroup>
+                    </div>
+                  ))}
                 </div>
-
-                <Separator />
-
-                <div>
-                  <h3 className="text-sm font-medium mb-3">Select Fields</h3>
-                  <div className="space-y-2">
-                    {availableFields.map((field) => (
-                      <div key={field.id} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`field-${field.id}`}
-                          checked={selectedFields.includes(field.id)}
-                          onCheckedChange={() => toggleField(field.id)}
-                        />
-                        <Label htmlFor={`field-${field.id}`}>{field.label}</Label>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <Button
-                  className="w-full"
-                  onClick={handleExport}
-                  disabled={isExporting || selectedProperties.length === 0 || selectedFields.length === 0 || !canExport}
-                >
-                  {isExporting ? (
-                    <span>Exporting...</span>
-                  ) : (
-                    <>
-                      <Download className="mr-2 h-4 w-4" />
-                      Export Data
-                    </>
-                  )}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Export Preview */}
-        <WithPermission permission="property:view">
-          <Card>
-            <CardHeader>
-              <CardTitle>Export Preview</CardTitle>
-              <CardDescription>Preview of your selected data</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="border rounded-md overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      {selectedFields.map((fieldId) => {
-                        const field = availableFields.find((f) => f.id === fieldId)
-                        return (
-                          <th
-                            key={fieldId}
-                            className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                          >
-                            {field?.label}
-                          </th>
-                        )
-                      })}
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredProperties
-                      .filter((property) => selectedProperties.includes(property.id))
-                      .slice(0, 5)
-                      .map((property) => (
-                        <tr key={property.id}>
-                          {selectedFields.map((fieldId) => (
-                            <td
-                              key={`${property.id}-${fieldId}`}
-                              className="px-6 py-4 whitespace-nowrap text-sm text-gray-500"
-                            >
-                              {fieldId === 'type' ?
-                capitalizeFirstLetter(property[fieldId as keyof typeof property]?.toString() || '') :
-                // Add this condition for 'lastUpdated'
-                fieldId === 'updatedAt' ?
-                  (property.updatedAt ? format(new Date(property.updatedAt), 'MMM dd, yyyy') : 'N/A') : // Example format: May 25, 2025
-                  property[fieldId as keyof typeof property]?.toString()}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
-              {selectedProperties.length > 5 && (
-                <div className="mt-2 text-sm text-gray-500 text-center">
-                  Showing 5 of {selectedProperties.length} selected properties
+              ) : (
+                <div className="p-8 text-center">
+                  <p className="text-muted-foreground">No properties found matching your search criteria.</p>
                 </div>
               )}
-            </CardContent>
-          </Card>
-        </WithPermission>
+            </div>
+
+            <div className="mt-4 text-sm text-gray-500">
+              {selectedProperties.length} of {filteredProperties.length} properties selected
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Export Options */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Export Options</CardTitle>
+            <CardDescription>Configure your export settings</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-sm font-medium mb-3">Export Format</h3>
+                <RadioGroup value={selectedFormat} onValueChange={setSelectedFormat}>
+                  {exportFormats.map((format) => (
+                    <div key={format.id} className="flex items-center space-x-2">
+                      <RadioGroupItem value={format.id} id={`format-${format.id}`} />
+                      <Label htmlFor={`format-${format.id}`} className="flex items-center">
+                        {format.icon}
+                        <span className="ml-2">{format.label}</span>
+                      </Label>
+                    </div>
+                  ))}
+                </RadioGroup>
+              </div>
+
+              <Separator />
+
+              <div>
+                <h3 className="text-sm font-medium mb-3">Select Fields</h3>
+                <div className="space-y-2">
+                  {availableFields.map((field) => (
+                    <div key={field.id} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`field-${field.id}`}
+                        checked={selectedFields.includes(field.id)}
+                        onCheckedChange={() => toggleField(field.id)}
+                      />
+                      <Label htmlFor={`field-${field.id}`}>{field.label}</Label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <Button
+                className="w-full"
+                onClick={handleExport}
+                disabled={isExporting || selectedProperties.length === 0 || selectedFields.length === 0}
+              >
+                {isExporting ? (
+                  <span>Exporting...</span>
+                ) : (
+                  <>
+                    <Download className="mr-2 h-4 w-4" />
+                    Export Data
+                  </>
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
-    </WithPermission>
+
+      {/* Export Preview */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Export Preview</CardTitle>
+          <CardDescription>Preview of your selected data</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="border rounded-md overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  {selectedFields.map((fieldId) => {
+                    const field = availableFields.find((f) => f.id === fieldId)
+                    return (
+                      <th
+                        key={fieldId}
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                      >
+                        {field?.label}
+                      </th>
+                    )
+                  })}
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {filteredProperties
+                  .filter((property) => selectedProperties.includes(property.id))
+                  .slice(0, 5)
+                  .map((property) => (
+                    <tr key={property.id}>
+                      {selectedFields.map((fieldId) => (
+                        <td
+                          key={`${property.id}-${fieldId}`}
+                          className="px-6 py-4 whitespace-nowrap text-sm text-gray-500"
+                        >
+                          {fieldId === 'type' ?
+              capitalizeFirstLetter(property[fieldId as keyof typeof property]?.toString() || '') :
+              // Add this condition for 'lastUpdated'
+              fieldId === 'updatedAt' ?
+                (property.updatedAt ? format(new Date(property.updatedAt), 'MMM dd, yyyy') : 'N/A') : // Example format: May 25, 2025
+                property[fieldId as keyof typeof property]?.toString()}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+          {selectedProperties.length > 5 && (
+            <div className="mt-2 text-sm text-gray-500 text-center">
+              Showing 5 of {selectedProperties.length} selected properties
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   )
 }

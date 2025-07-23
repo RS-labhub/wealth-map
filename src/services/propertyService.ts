@@ -2,7 +2,7 @@ import axios from 'axios';
 import { Property } from '@/Models/models';
 
 class PropertyService {
-  private PROPERTY_API = `${process.env.NEXT_PUBLIC_PROPERTY_API_BASE_URL || "hello"}/api/property`;
+  private PROPERTY_API = `${process.env.NEXT_PUBLIC_PROPERTY_API_BASE_URL || ""}/api/property`;
 
   async getProperties(): Promise<Property[]> {
     const res = await axios.get(`${this.PROPERTY_API}/all`);

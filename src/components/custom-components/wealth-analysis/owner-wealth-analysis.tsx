@@ -44,14 +44,14 @@ import { dataSources, Wealthownershipfields, } from "@/Models/models"
 import type { ConfidenceLevel } from "@/Models/models"
 import usePropertyStore from "@/stores/propertyStore"
 import useOwnerStore from "@/stores/ownerStore"
-import OwnerService from "@/services/onwerService"
+import OwnerService from "@/services/ownerService"
 
 
 // Accept a single optional prop: { ownerId?: string }
 export default function OwnerWealthAnalysis({ ownerId }: { ownerId?: string }) {
   const ownerService = new OwnerService();
 
-  const [selectedOwner, setSelectedOwner] = useState<string | null>(null)
+  const [selectedOwner, setSelectedOwner] = useState<string>("")
   const [comparisonOwner, setComparisonOwner] = useState<string | null>(null)
   const [showOnlyHighConfidence, setShowOnlyHighConfidence] = useState(false)
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({})
@@ -59,6 +59,7 @@ export default function OwnerWealthAnalysis({ ownerId }: { ownerId?: string }) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const [activeTab, setActiveTab] = useState("details")
   const [isMounted, setIsMounted] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [owners, setOwners] = useState<Owner[] | null>([])
   const {
     getAllProperties,
@@ -73,42 +74,45 @@ export default function OwnerWealthAnalysis({ ownerId }: { ownerId?: string }) {
   } = useOwnerStore();
   useEffect(() => {
     const fetchData = async () => {
-      if (isOwnerCacheValid()) {
-        setAllOwners(getAllOwners());
-        return;
-      }
+      // Set loading to true at the beginning of data fetching
+      setIsMounted(false);
       try {
-        const ownerRes = await ownerService.getOwners();
-        setAllOwners(ownerRes);
+        if (isOwnerCacheValid()) {
+          const cachedOwners = getAllOwners();
+          console.log("Using cached owners:", cachedOwners);
+          setOwners(cachedOwners);
+           // Set local state from cache
+        } else {
+          console.log("Fetching owners from API...");
+          const ownerRes = await ownerService.getOwners();
+          setAllOwners(ownerRes); // Update Zod cache
+          setOwners(ownerRes); // Set local state from API response
+        }
       } catch (err) {
         console.error('Failed to fetch owners:', err);
+        setOwners([]); // Handle error by setting owners to an empty array
+      } finally {
+        setIsMounted(true);// Set loading to false when data fetching is complete (or an error occurs)
       }
     };
     fetchData();
-  }, []); // Only run on mount
-  
-  // This effect runs when ownerId or allOwners changes
-  useEffect(() => {
-    if (ownerId && getAllOwners().length > 0) {
-      handleOwnerSelect(ownerId);
-      
-    }
-  }, [ownerId, getAllOwners]);
-  // useEffect(() => {
-  //   const fetchOwners = async () => {
-  //     try {
-  //       const res = await axios.get('/api/owner/all');
-  //       setOwners(res.data);
-  //     } catch (error) {
-  //       setOwners([]);
-  //     }
-  //     setIsMounted(true);
-  //   };
+  }, []); // Empty dependency array means this runs once on mount
 
-   
-  //   fetchOwners();
-  //   return () => setIsMounted(false);
-  // }, [ownerId]);
+  // This effect ensures an owner is selected if ownerId prop is provided
+  useEffect(() => {
+    if (ownerId && owners && owners.length > 0 && !selectedOwner) {
+      const ownerExists = owners.some(owner => owner.id === ownerId);
+      if (ownerExists) {
+        setSelectedOwner(ownerId);
+      } else {
+        console.warn(`Owner with ID ${ownerId} not found.`);
+      }
+    } else if (!ownerId && owners && owners.length > 0 && !selectedOwner) {
+      // No owner selected by default
+      setSelectedOwner("");
+    }
+  }, [ownerId, owners, selectedOwner]); // Depend on ownerId and owners state
+
 
   const toggleSection = (ownerId: string) => {
     setExpandedSections((prev) => ({
@@ -125,7 +129,7 @@ export default function OwnerWealthAnalysis({ ownerId }: { ownerId?: string }) {
         : true;
       return matchesSearch && matchesConfidence;
     })
-    : [];
+    : owners;
 
   const selectedOwnerData = selectedOwner ? owners?.find((owner) => owner.id === selectedOwner) : null
   const comparisonOwnerData = comparisonOwner ? owners?.find((owner) => owner.id === comparisonOwner) : null
@@ -189,7 +193,13 @@ export default function OwnerWealthAnalysis({ ownerId }: { ownerId?: string }) {
     const composition = getWealthComposition(owner);
     return composition.find((item: any) => item.name === assetName)?.value || "0";
   }
-
+  if (isMounted === false) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
   return (
     <div className="space-y-8">
       <TitleUpdater />

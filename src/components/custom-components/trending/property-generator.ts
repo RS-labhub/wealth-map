@@ -8,6 +8,8 @@ export type Property = {
   coordinates: number[]
   value: string
   region: string
+  state?:string
+  zipCode?:string
   sqft: number
   views: number
   confidenceLevel: ConfidenceLevel
@@ -20,7 +22,7 @@ export type Property = {
 }
 
 // Generate dates for different time periods
-const generateDate = (daysAgo: number) => {
+export const generateDate = (daysAgo: number) => {
   const date = new Date()
   date.setDate(date.getDate() - daysAgo)
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })

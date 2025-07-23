@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { FileText, Download, Eye } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
@@ -9,68 +9,54 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Card } from "@/components/ui/card"
+import { toast } from "@/components/ui/use-toast"
+import { getExportHistory } from "@/lib/api/reports"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { ScrollArea } from "@/components/ui/scroll-area"
+
+interface Report {
+  id: string
+  title: string
+  description: string
+  reportType: string
+  createdAt: string
+  notes: string
+}
 
 export function AccountDocuments() {
-  // Mock reports data
-  const reports = [
-    {
-      id: 1,
-      name: "Q1 Investment Performance",
-      type: "PDF",
-      size: "2.4 MB",
-      generatedAt: "May 15, 2025",
-      properties: 12,
-      category: "Performance",
-    },
-    {
-      id: 2,
-      name: "Tax Optimization Report",
-      type: "PDF",
-      size: "1.8 MB",
-      generatedAt: "April 10, 2025",
-      properties: 8,
-      category: "Tax",
-    },
-    {
-      id: 3,
-      name: "Property Valuation Analysis",
-      type: "PDF",
-      size: "3.2 MB",
-      generatedAt: "March 22, 2025",
-      properties: 5,
-      category: "Valuation",
-    },
-    {
-      id: 4,
-      name: "Market Trend Analysis",
-      type: "PDF",
-      size: "1.1 MB",
-      generatedAt: "February 5, 2025",
-      properties: 24,
-      category: "Market",
-    },
-    {
-      id: 5,
-      name: "Portfolio Diversification",
-      type: "PDF",
-      size: "2.7 MB",
-      generatedAt: "January 18, 2025",
-      properties: 15,
-      category: "Portfolio",
-    },
-    {
-      id: 6,
-      name: "Risk Assessment Report",
-      type: "PDF",
-      size: "1.5 MB",
-      generatedAt: "January 5, 2025",
-      properties: 18,
-      category: "Risk",
-    },
-  ]
-
-  const [selectedReports, setSelectedReports] = useState<number[]>([])
+  const [reports, setReports] = useState<Report[]>([])
+  const [selectedReports, setSelectedReports] = useState<string[]>([])
   const [searchTerm, setSearchTerm] = useState("")
+  const [categoryFilter, setCategoryFilter] = useState("all")
+  const [isLoading, setIsLoading] = useState(true)
+  const [viewReport, setViewReport] = useState<Report | null>(null)
+  const [reportContent, setReportContent] = useState<any>(null)
+
+  useEffect(() => {
+    const fetchReports = async () => {
+      try {
+        const data = await getExportHistory();
+        setReports(data);
+      } catch (error) {
+        console.error('Error fetching reports:', error);
+        toast({
+          title: "Error",
+          description: "Failed to load reports",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchReports();
+  }, []);
 
   const toggleSelectAll = () => {
     if (selectedReports.length === reports.length) {
@@ -80,7 +66,7 @@ export function AccountDocuments() {
     }
   }
 
-  const toggleReportSelection = (id: number) => {
+  const toggleReportSelection = (id: string) => {
     if (selectedReports.includes(id)) {
       setSelectedReports(selectedReports.filter((reportId) => reportId !== id))
     } else {
@@ -88,11 +74,101 @@ export function AccountDocuments() {
     }
   }
 
+  const handleDownload = async (report: Report) => {
+    try {
+      const response = await fetch(`/api/reports/${report.id}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to download report');
+      }
+
+      // Get the filename from the Content-Disposition header
+      const contentDisposition = response.headers.get('Content-Disposition');
+      const filenameMatch = contentDisposition?.match(/filename="(.+)"/);
+      const filename = filenameMatch ? filenameMatch[1] : `${report.title}.${report.reportType}`;
+
+      // Create a blob from the response
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      
+      // Create a temporary link and trigger the download
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      
+      // Clean up
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      toast({
+        title: "Success",
+        description: "Download started",
+      });
+    } catch (error) {
+      console.error('Error downloading report:', error);
+      toast({
+        title: "Error",
+        description: "Failed to download report",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDownloadSelected = async () => {
+    for (const reportId of selectedReports) {
+      const report = reports.find(r => r.id === reportId);
+      if (report) {
+        await handleDownload(report);
+      }
+    }
+  };
+
+  const handleDownloadAll = async () => {
+    for (const report of reports) {
+      await handleDownload(report);
+    }
+  };
+
+  const handleView = async (report: Report) => {
+    try {
+      const response = await fetch(`/api/reports/${report.id}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch report content');
+      }
+
+      const content = await response.text();
+      setReportContent(content);
+      setViewReport(report);
+    } catch (error) {
+      console.error('Error viewing report:', error);
+      toast({
+        title: "Error",
+        description: "Failed to view report",
+        variant: "destructive",
+      });
+    }
+  };
+
   const filteredReports = reports.filter(
     (report) =>
-      report.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      report.category.toLowerCase().includes(searchTerm.toLowerCase()),
-  )
+      report.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      report.description.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <div>
@@ -103,7 +179,7 @@ export function AccountDocuments() {
 
       <Separator className="my-6" />
 
-      <Card className="p-4 mb-6">
+      <Card className="p-6">
         <div className="flex flex-col md:flex-row gap-4 items-end">
           <div className="flex-1">
             <Input
@@ -114,7 +190,7 @@ export function AccountDocuments() {
             />
           </div>
           <div className="w-full md:w-48">
-            <Select defaultValue="all">
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
               <SelectTrigger>
                 <SelectValue placeholder="Filter by category" />
               </SelectTrigger>
@@ -132,18 +208,69 @@ export function AccountDocuments() {
           <Button
             className="bg-green-500 hover:bg-green-600 flex items-center gap-2"
             disabled={selectedReports.length === 0}
+            onClick={handleDownloadSelected}
           >
             <Download className="h-4 w-4" />
             Download Selected ({selectedReports.length})
           </Button>
-          <Button variant="outline" className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            className="flex items-center gap-2"
+            onClick={handleDownloadAll}
+          >
             <Download className="h-4 w-4" />
             Download All
           </Button>
         </div>
       </Card>
 
-      <div className="border rounded-md overflow-hidden">
+      <Dialog open={!!viewReport} onOpenChange={() => setViewReport(null)}>
+        <DialogContent className="max-w-4xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle>{viewReport?.title}</DialogTitle>
+            <div className="space-y-2">
+              <DialogDescription>
+                {viewReport?.description}
+              </DialogDescription>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="bg-muted/50">
+                  {viewReport?.reportType}
+                </Badge>
+                <span className="text-sm text-muted-foreground">
+                  Generated on {viewReport && new Date(viewReport.createdAt).toLocaleDateString()}
+                </span>
+              </div>
+            </div>
+          </DialogHeader>
+          <ScrollArea className="h-[60vh] w-full rounded-md border p-4">
+            {viewReport?.reportType.toLowerCase() === 'csv' ? (
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <tbody>
+                    {reportContent?.split('\n').map((row: string, rowIndex: number) => (
+                      <tr key={rowIndex} className={rowIndex === 0 ? 'bg-muted/50' : ''}>
+                        {row.split(',').map((cell: string, cellIndex: number) => (
+                          <td key={cellIndex} className="border p-2">
+                            {cell.replace(/^"|"$/g, '')}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : viewReport?.reportType.toLowerCase() === 'json' ? (
+              <pre className="whitespace-pre-wrap break-words">
+                {JSON.stringify(JSON.parse(reportContent || '{}'), null, 2)}
+              </pre>
+            ) : (
+              <pre className="whitespace-pre-wrap break-words">{reportContent}</pre>
+            )}
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      <div className="mt-6">
         <div className="bg-muted/50 p-4 border-b">
           <div className="grid grid-cols-12 gap-4 items-center">
             <div className="col-span-1">
@@ -159,7 +286,11 @@ export function AccountDocuments() {
           </div>
         </div>
 
-        {filteredReports.length > 0 ? (
+        {isLoading ? (
+          <div className="p-8 text-center">
+            <p className="text-muted-foreground">Loading reports...</p>
+          </div>
+        ) : filteredReports.length > 0 ? (
           filteredReports.map((report) => (
             <div key={report.id} className="p-4 border-b last:border-0 hover:bg-muted/30">
               <div className="grid grid-cols-12 gap-4 items-center">
@@ -173,24 +304,36 @@ export function AccountDocuments() {
                   <div className="flex items-center gap-3">
                     <FileText className="h-5 w-5 text-muted-foreground" />
                     <div>
-                      <p className="font-medium">{report.name}</p>
+                      <p className="font-medium">{report.title}</p>
                       <p className="text-xs text-muted-foreground">
-                        {report.size} • {report.properties} properties
+                        {report.reportType.toUpperCase()} • {report.description}
                       </p>
                     </div>
                   </div>
                 </div>
                 <div className="col-span-2">
                   <Badge variant="outline" className="bg-muted/50">
-                    {report.category}
+                    {report.reportType}
                   </Badge>
                 </div>
-                <div className="col-span-2 text-sm">{report.generatedAt}</div>
+                <div className="col-span-2 text-sm">
+                  {new Date(report.createdAt).toLocaleDateString()}
+                </div>
                 <div className="col-span-2 flex justify-end gap-2">
-                  <Button variant="ghost" size="icon" title="View">
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    title="View"
+                    onClick={() => handleView(report)}
+                  >
                     <Eye className="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" size="icon" title="Download">
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    title="Download"
+                    onClick={() => handleDownload(report)}
+                  >
                     <Download className="h-4 w-4" />
                   </Button>
                 </div>
